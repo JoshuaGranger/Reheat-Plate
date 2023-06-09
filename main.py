@@ -179,8 +179,8 @@ try:
             heat_cycle()
         
         # # Development Exception to allow breaking out of code
-        elif (btn_btm.value() == 0):
-            raise KeyboardInterrupt
+        # elif (btn_btm.value() == 0):
+        #     raise KeyboardInterrupt
 
 except KeyboardInterrupt:
     print("Interrupted")
