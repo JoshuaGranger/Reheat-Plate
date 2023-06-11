@@ -173,11 +173,6 @@ try:
 
     # Execute core0
     while True:
-        # Update heater active status (check for heaterL/R_atp flag set)
-        lock.acquire()
-        lcd.heater_toggle()
-        lock.release()
-
         # Top button pressed and heaters not already hot
         if (btn_top.value() == 0):
             lock.acquire()
@@ -187,6 +182,28 @@ try:
             if heaters_cool:
                 heat_cycle()
         
+        # Bottom button pressed while not in cycle toggles heater active status
+        elif (btn_btm.value() == 0):
+            lock.acquire()
+            if not heaterL.active and not heaterR.active:
+                heaterL.active = True
+                heaterR.active = False
+            
+            elif heaterL.active and not heaterR.active:
+                heaterL.active = False
+                heaterR.active = True
+
+            elif not heaterL.active and heaterR.active:
+                heaterL.active = True
+                heaterR.active = True
+
+            else:
+                heaterL.active = False
+                heaterR.active = False
+
+            lock.release()
+            sleep_ms(750)
+
         # # Development Exception to allow breaking out of code
         # elif (btn_btm.value() == 0):
         #     raise KeyboardInterrupt
