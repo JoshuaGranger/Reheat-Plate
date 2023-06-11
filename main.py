@@ -16,24 +16,24 @@ import _thread
 btn_top = Pin(18, Pin.IN, Pin.PULL_UP)
 btn_btm = Pin(22, Pin.IN, Pin.PULL_UP)
 
-## SPI - Display
-spi_display = SPI(0, baudrate=10000000, polarity=1, phase=1, bits=8,
-                    firstbit=SPI.MSB, sck=Pin(2), mosi=Pin(3), miso=Pin(4))
-display = Display(spi_display, dc=Pin(6), cs=Pin(5), rst=Pin(8), width=320, height=240, rotation=90)
-display.clear()
-
-## SPI - Touch
-spi_touch = SPI(1, baudrate=1000000, sck=Pin(10), mosi=Pin(11), miso=Pin(12))
-
-## Initialize LCD Object
-lcd = LCD(display, spi_touch)
+# Semaphore (lock) handling
+lock = _thread.allocate_lock()
 
 ## Heater
 heaterL = Heater(20, 26)
 heaterR = Heater(21, 27)
 
-# Semaphore (lock) handling
-lock = _thread.allocate_lock()
+# SPI - Display
+spi_display = SPI(0, baudrate=10000000, polarity=1, phase=1, bits=8,
+                    firstbit=SPI.MSB, sck=Pin(2), mosi=Pin(3), miso=Pin(4))
+display = Display(spi_display, dc=Pin(6), cs=Pin(5), rst=Pin(8), width=320, height=240, rotation=90)
+display.clear()
+
+# SPI - Touch
+spi_touch = SPI(1, baudrate=1000000, sck=Pin(10), mosi=Pin(11), miso=Pin(12))
+
+# Initialize LCD Object
+lcd = LCD(display, spi_touch, heaterL, heaterR)
 
 # Functions
 ## Disable heating
@@ -48,8 +48,8 @@ def disable_heaters():
 
 ## Set temperature and hold for time
 def set_and_hold(temperature, time_ms):
-    # Display the holding time
     lock.acquire()
+    # Display the holding time
     heaterL.holding_time = time_ms
     heaterR.holding_time = time_ms
 
@@ -98,42 +98,44 @@ def set_and_hold(temperature, time_ms):
     # Return False (do not abort)
     return False
 
+
 ## Heating Cycle
 def heat_cycle():
     abort = False
     while True and not abort:
-        # Set first temperature and start heating
+        # Verify at least one heater is active
         lock.acquire()
-        heaterL.active = True
-        heaterR.active = True
+        heater_active = heaterL.active or heaterR.active
         lock.release()
 
         # Heating Steps
-        abort = set_and_hold(64500, 45000)
-        if abort:
-            break
+        if (heater_active):
+            abort = set_and_hold(64500, 45000)
+            if abort:
+                break
 
-        abort = set_and_hold(62500, 45000)
-        if abort:
-            break
+            abort = set_and_hold(62500, 45000)
+            if abort:
+                break
 
-        abort = set_and_hold(55000, 30000)
-        if abort:
-            break
+            abort = set_and_hold(55000, 30000)
+            if abort:
+                break
 
-        abort = set_and_hold(30000, 15000)
-        if abort:
-            break
+            abort = set_and_hold(30000, 15000)
+            if abort:
+                break
 
-        abort = set_and_hold(20000, 1000)
-        if abort:
-            break
+            abort = set_and_hold(20000, 1000)
+            if abort:
+                break
         
         # At the end of the cycle, break out
         abort = True
 
     # Disable heaters and exit function
     disable_heaters()
+
 
 ## Core 1
 def core1_main():
@@ -143,6 +145,8 @@ def core1_main():
         # Read temperatures and update LCD display
         heaterL.read_temp()
         heaterR.read_temp()
+        
+        # Draw LCD Table
         lcd.draw_table(btn_top, btn_btm, heaterL, heaterR)
 
         # Evaluate heater L condition and heat if necessary
@@ -160,9 +164,6 @@ def core1_main():
             heaterR.heating = False
 
         lock.release()
-        
-        # Sleep to manage execution speed
-        sleep_ms(200)
 
 
 # Execution
@@ -172,11 +173,19 @@ try:
 
     # Execute core0
     while True:
+        # Update heater active status (check for heaterL/R_atp flag set)
+        lock.acquire()
+        lcd.heater_toggle()
+        lock.release()
+
         # Top button pressed and heaters not already hot
-        if (btn_top.value() == 0 and
-            heaterL.temp_raw > 60000 and
-            heaterR.temp_raw > 60000):
-            heat_cycle()
+        if (btn_top.value() == 0):
+            lock.acquire()
+            heaters_cool = heaterL.temp_raw > 60000 and heaterR.temp_raw > 60000
+            lock.release()
+
+            if heaters_cool:
+                heat_cycle()
         
         # # Development Exception to allow breaking out of code
         # elif (btn_btm.value() == 0):

@@ -21,14 +21,50 @@ class LCD(object):
     TEAL = color565(0,128,128)
     NAVY = color565(0,0,128)
 
-    def __init__(self, display, spi_touch):
+    def __init__(self, display, spi_touch, heaterL, heaterR):
         self.display = display
         self.touch = Touch(spi_touch, cs=Pin(13), int_pin=Pin(7),
                            int_handler=self.touchscreen_press)
+        self.heaterL = heaterL
+        self.heaterR = heaterR
+
+        # Interrupts on core 1 for the touchscreen is apparently challenging or
+        # impossible. As a result, the interrupt needs to remain on Core 0. This
+        # interrupt has the potential to interrupt with the lock.acquire/release which
+        # causes the program to lock up. To avoid/fix this problem, these "active 
+        # toggle pending" bits are used to handle touchscreen toggles in the regular Core 1
+        # functionality loop.
+        self.heaterL_atp = False
+        self.heaterR_atp = False
+
 
     def touchscreen_press(self, y, x):
         # Calibration
         x = x - 18
+
+        # Touchscreen handling for Heater.active
+        active_pressed_y = 37 < y < 70
+        active_pressed_hL = active_pressed_y and (195 < x < 255)
+        active_pressed_hR = active_pressed_y and (255 < x < 315)
+
+        if active_pressed_hL:
+            self.heaterL_atp = True
+        
+        if active_pressed_hR:
+            self.heaterR_atp = True
+
+
+    def heater_toggle(self):
+        if self.heaterL_atp:
+            new_val = not self.heaterL.active
+            self.heaterL.active = new_val
+            self.heaterL_atp = False
+
+        if self.heaterR_atp:
+            new_val = not self.heaterR.active
+            self.heaterR.active = new_val
+            self.heaterR_atp = False
+
 
     def draw_table(self, btnL, btnR, heaterL, heaterR):
         # Draw table grid

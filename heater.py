@@ -3,7 +3,7 @@ from math import log
 
 class Heater(object):
     def __init__(self, heat_pin, temp_pin):
-        _values_to_avg = 5
+        _values_to_avg = 10
         self._active = False
         self._heat_pin = Pin(heat_pin, Pin.OUT)
         self._adc = ADC(temp_pin)
